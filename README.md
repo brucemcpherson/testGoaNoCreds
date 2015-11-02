@@ -3,4 +3,5 @@ This repo (testGoaNoCreds) was automatically created on 02 November 2015 13:49:2
 for more information see the [desktop liberation site](http://ramblings.mcpher.com/Home/excelquirks/drivesdk/gettinggithubready "desktop liberation")
 you can see [library and dependency information here](dependencies.md)
 
-Now update manually with details of this project - this skeleton file is committed only when there is no README.md in the repo.
+These are tests and examples showing how to use the cGoa OAuth2 library for Apps Script. 
+More details are at http://ramblings.mcpher.com/Home/excelquirks/goa
