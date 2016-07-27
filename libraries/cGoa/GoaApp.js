@@ -1,4 +1,7 @@
-
+// just a shortcut
+function make (packageName , propertyStore , e, optTimeout, impersonate) {
+  return GoaApp.createGoa (packageName , propertyStore , optTimeout, impersonate).execute(e);
+};
 /**
  * helpers for Goa oauth2 class
  * @namespace GoaApp
@@ -12,12 +15,14 @@ var GoaApp = (function (goaApp) {
   // a token needs at least this time left to be able to be used (max time a script can run)
   goaApp.gracePeriod = 1000 * 60 * 7;
   
+  
+
   /**
   * create a goa class
   * @param {string} packageName the package name
   * @param {PropertyStore} propertyStore the property store
   * @param {number} [optTimeout] in seconds
-  * @param {impersonate} [impersonate] email address to impersonate for service accounts
+  * @param {string} [impersonate] email address to impersonate for service accounts
   */
   goaApp.createGoa = function (packageName, propertyStore, optTimeout , impersonate) {
     if (!packageName) throw 'package name must be provided';
@@ -26,6 +31,7 @@ var GoaApp = (function (goaApp) {
     if (impersonate && !cUseful.isEmail (impersonate)) throw 'impersonate should be an email address, not  ' + impersonate;
     return new Goa (packageName, propertyStore, optTimeout , impersonate);
   };
+  
   /**
    * start the oauth flow
    * @param {object} package the package 
@@ -42,7 +48,7 @@ var GoaApp = (function (goaApp) {
     if (force) goaApp.killPackage (package);
     
     // if havent already got one that will do
-    if (!goaApp.hasToken(package)) {
+    if (!goaApp.hasToken(package,true)) {
 
       // if its a service account, its a simple one shot jwt
       if (goaApp.isServiceAccountType(package)) {
@@ -59,13 +65,31 @@ var GoaApp = (function (goaApp) {
         }
         // something happened
         if (!goaApp.hasToken(package)) throw 'failed to get service account token:' + JSON.stringify(result.content);
-          
+         
       }
+      
+      // maybe its a firebase token
+      else if (goaApp.isJwtType(package)) {
+        var ft = JWT.generateJWT ( goaApp.getProperty(package,'data') , package.clientSecret );
+        if (ft) {
+          // make it last 24 hours
+          package.access = {
+            accessToken:ft,
+            expires: new Date().getTime() + 60*1000*60*24
+          }
+        }
+        else {
+          throw 'failed to get jwt token';
+        }
+      }
+      
       
       // maybe we can refresh one
       else if ( goaApp.hasRefreshToken(package) ) {
         var result = goaApp.tryRefresh (package);
-        if (!goaApp.hasToken(package)) throw 'failed to exchange refresh token for access token:' + result.getContentText();
+        if (!goaApp.hasToken(package)) {
+          Logger.log('failed to exchange refresh token for access token(ok if this app has been recently revoked)' + result.getContentText());
+        }
       }
     }
     
@@ -104,6 +128,53 @@ var GoaApp = (function (goaApp) {
   };
   
   /**
+   * remove params from cache
+   * @param {object} propertyStore where to find it
+   * @param {string} packageName the package name
+   */
+  goaApp.removePackage = function (propertyStore, packageName) {
+  
+    var p = cUseful.rateLimitExpBackoff( function () { 
+      return propertyStore.deleteProperty(goaApp.getPropertyKey(packageName));
+    });
+  };
+  
+    /**
+  * creates a package from a file for a service account
+  * @param {Drive-App} dap the drive-app
+  * @param {object} package info on how to populate the package
+  * @return {object}  the authentication package
+  */
+  goaApp.createPackageFromFile = function (dap , package) {
+  
+    // first check that the service is known and it's for a service account
+    if (goaApp.isServiceAccountType(package)){ 
+      throw 'service type for ' + package.service + ' should be a web account';
+    }
+    
+    // now get the json key data
+    var file = dap.getFileById(package.fileId);
+    if (!file) throw 'couldnt open file:' + package.fileId;
+    
+    // the file content
+    var content = cUseful.rateLimitExpBackoff(function () { 
+      return JSON.parse (file.getBlob().getDataAsString() );
+    });
+    
+    
+    // check its good
+    if (!content.web || !content.web.client_id || !content.web.client_secret) {
+      throw 'this is not a credentials file downloaded from the developers console'
+    }
+    
+    var p = cUseful.clone(package);
+    p.clientId = content.web.client_id;
+    p.clientSecret = content.web.client_secret;
+    return p;
+
+  };
+  
+  /**
    * set the authentication package
    * @param {object} propertyStore where to find it
    * @param {object} package the authentication package
@@ -126,19 +197,31 @@ var GoaApp = (function (goaApp) {
     return servicePackage.accountType === 'serviceaccount';
   };
   
+ /**
+  * creates a package from a file for a service account
+  * @param {object} package the authentication package
+  * @return {boolean}  whether its a jwt account
+  */
+  goaApp.isJwtType = function (package) {
+    var servicePackage = goaApp.getServicePackage ( package);
+    return servicePackage.accountType === 'firebase';
+  };
+  
+
+  
   /**
   * creates a package from a file for a service account
-  * @param {DriveApp} driveApp the driveapp
+  * @param {Drive-App} dap the drive-app
   * @param {object} package info on how to populate the package
   * @return {object}  the authentication package
   */
-  goaApp.createServiceAccount = function (driveApp , package) {
+  goaApp.createServiceAccount = function (dap , package) {
   
     // first check that the service is known and it's for a service account
     if (!goaApp.isServiceAccountType(package))throw 'service type for ' + package.service + ' should be serviceaccount';
     
     // now get the json key data
-    var file = DriveApp.getFileById(package.fileId);
+    var file = dap.getFileById(package.fileId);
     if (!file) throw 'couldnt open file:' + package.fileId;
     
     // merge with existing package
@@ -171,14 +254,69 @@ var GoaApp = (function (goaApp) {
   };
   
   /**
+   * gets an arbirary property stored in a goa packages
+   * @param {object} package the authentication package
+   * @param {string} key the property key
+   * @return {string | undefined} the accesstoken
+   */
+  goaApp.getProperty = function (package,key) {
+    return package[key];
+  };
+  
+  /**
    * checks if access token is available and valid
    * @param {object} package the authentication package
+   * @param {boolean} check whether to check it against google oauth2 infra
    * @return {boolean} whether a viable token is present
    */
-  goaApp.hasToken = function (package) {
-    return goaApp.hasFlow(package) && package.access.accessToken && 
-      new Date().getTime() + goaApp.gracePeriod < package.access.expires;
+  goaApp.hasToken = function (package,check) {
+
+    //for now, lets always check.. maybe remove this later
+    check = true;
+    
+    // first step, make sure we have a likable token
+    var ok = (goaApp.hasFlow(package) && 
+      package.access.accessToken && 
+      (new Date().getTime() + goaApp.gracePeriod < package.access.expires)) ? true : false;  
+
+    // next step.. if asked, check against google infra if its possible
+
+    if (check && ok) {
+
+      var servicePackage = goaApp.getServicePackage (package);
+
+      if (servicePackage.checkUrl) {
+
+        var checked = checkToken_(servicePackage.checkUrl + package.access.accessToken);
+        ok = checked.ok;
+
+        if(!ok) {
+          // need to get rid of this token
+          package.access.accessToken = "";
+
+        }
+      }
+    }
+
+    
+    return ok;
   };
+  
+  // checks the token 
+  function checkToken_ (url) {
+    var response = UrlFetchApp.fetch(
+      url, {muteHttpExceptions:true});
+    try {
+      var result = JSON.parse(response.getContentText());
+      return {
+        ok:result.error ? false : true,
+        info:result
+      }
+    }
+    catch(err) {
+      return{ ok:false,info:{error_description:'parse error', error:err , data: response.getContentText()}};
+    }
+  }
   
   /** 
    * checks that we have an access flow package at all
@@ -257,6 +395,8 @@ var GoaApp = (function (goaApp) {
 
     // if this token is allowed for offline use
     // eg reddit uses duration:permamnent to get a refresh token
+    bundle.access_type = "online";
+    
     if(scriptPackage.offline) { 
       if (!servicePackage.duration) {
         bundle.access_type= "offline";
@@ -307,7 +447,7 @@ var GoaApp = (function (goaApp) {
           refresh_token : refreshToken,
           grant_type : "refresh_token"
         },
-        muteHttpExceptions : false
+        muteHttpExceptions : true
       };
       
       // get the service info
@@ -471,6 +611,49 @@ var GoaApp = (function (goaApp) {
     });
 
   };
+  /**
+  * sets the user property store to a clean package copied from the script store if it doesnt exist
+  * if the current property does not match the script one, it will be replaced anyway
+  * @param  {string} packageName the package name
+  * @param {PropertyStore} scriptPropertyStore where the credentials are
+  * @param {PropertyStore} userPropertyStore where to put them
+  * @param {boolean} replace them even if the exist
+  * @return {object} the package
+  */
+  goaApp.userClone = function(packageName, scriptPropertyStore , userPropertyStore, replace) {
+    
+    // get the userpacakage if there is one
+    var userPackage = goaApp.getPackage(userPropertyStore, packageName);
+    
+    // get the script package
+    var scriptPackage = goaApp.getPackage(scriptPropertyStore, packageName);
+    if (!scriptPackage) throw packageName + ' cannot be copied from script store as it is not there';
+    
+    // replace it with the script version if it has changed
+    if (!userPackage || replace || !samePackages(scriptPackage,userPackage)) {
+
+      // kill token information
+      goaApp.killPackage (scriptPackage);
+      
+      // write to user store
+      goaApp.setPackage (userPropertyStore , scriptPackage);
+      
+    }
+    
+    // kill token information and compare
+    function samePackages( a, b) {
+      if (!a || !b) return false;
+      
+      var ca = goaApp.killPackage(cUseful.clone(a));
+      var cb = goaApp.killPackage(cUseful.clone(b));
+      
+      // remove the timestamp from each
+      ca.revised = cb.revised = 0;
+
+      return JSON.stringify(ca) === JSON.stringify(cb);
+    }
+  };
+  
   
   /**
    * the standard consent screen
@@ -480,12 +663,20 @@ var GoaApp = (function (goaApp) {
    * @param {string} redirect Url the redirect URL
    * @param {string} packageName the pckage name
    * @param {string} serviceName the service name
+   * @param {boolean} offline whether offline access is allowed
    * @return {string} the html code for a consent screen
    */
-  goaApp.defaultConsentScreen = function  (consentUrl,redirectUrl,packageName,serviceName) {
+  goaApp.defaultConsentScreen = function  (consentUrl,redirectUrl,packageName,serviceName,offline) {
     
     return '<link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">' + 
       '<style>aside {font-size:.8em;} .strip {margin:10px;} .gap {margin-top:20px;} </style>' +
+      '<script>' +
+        'function handleCon(con) { ' +
+          'var o=document.getElementById("conAnchor");' +
+          'var newUrl=o.href.toString().replace(/access_type=\\w+/, "access_type=" + (con.checked ? "off" :"on") + "line");' +
+          'o.setAttribute ("href", newUrl);' +
+        '}' +
+      '</script>' +
       '<div class="strip">' +
 
         '<h3>Goa has detected that authentication is required for a ' + serviceName + ' service</h3>' + 
@@ -493,19 +684,24 @@ var GoaApp = (function (goaApp) {
         '<div class="block"></div>' +
         '<div><label for="redirect">Redirect URI (for the developers console)</label></div>' + 
         '<div><input class="redirect" type="text" id="redirect" value="' + redirectUrl + '" disabled size=' + redirectUrl.length + '></div>' +
-        
+
+        '<div class="gap">' +
+          '<div><label><input type="checkbox" onclick="handleCon(this);"' + 
+            (offline ? ' checked' : '') + '>Allow ' + packageName + ' to always access this resource in the future ?</label></div>' + 
+        '</div>' +
+          
         '<div class="gap">' +
           '<div><label for="start">Please provide your consent to start authentication for ' + packageName + '</label></div>' + 
         '</div>' +
           
         '<div class="gap">' +
-          '<a href = "' + consentUrl + '" target="_parent"><button id="start" class="action">Start</button></a>' +
+          '<a href = "' + consentUrl + '" target="_parent" id="conAnchor"><button id="start" class="action">Start</button></a>' +
         '</div>' +
           
         '<div class="gap">' +
             '<aside>For more information on Goa see <a href="http://ramblings.mcpher.com/Home/excelquirks/oauthtoo">Desktop Liberation</aside>'+ 
         '</div>' + 
-       '</div>'; 
+       '</div>'
   };
   
   /**
