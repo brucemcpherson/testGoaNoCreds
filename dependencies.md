@@ -1,5 +1,5 @@
 # Google Apps Script Project: testGoaNoCreds
-This repo (testGoaNoCreds) was automatically updated on 02 November 2015 13:49:23 GMT by GasGit
+This repo (testGoaNoCreds) was automatically updated on 27 July 2016 10:35:48 BST by GasGit
 
 For more information see the [desktop liberation site](http://ramblings.mcpher.com/Home/excelquirks/drivesdk/gettinggithubready "desktop liberation") or [contact me on G+](https://plus.google.com/+BruceMcpherson "Bruce McPherson - GDE")
 ## Details for Apps Script project testGoaNoCreds
