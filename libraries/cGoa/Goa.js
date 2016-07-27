@@ -1,6 +1,11 @@
 /**
- * an oauth2 servicing class
- */
+* create a goa class
+* @constructor
+* @param {string} packageName the package name
+* @param {PropertyStore} propertyStore the property store
+* @param {number} [optTimeout] in seconds
+* @param {string} [impersonate] email address to impersonate for service accounts
+*/
 var Goa = function (packageName, propertyStore, optTimeout , impersonate) {
   'use strict';
 
@@ -19,6 +24,7 @@ var Goa = function (packageName, propertyStore, optTimeout , impersonate) {
       name_,
       onToken_,
       onTokenResult_;
+     
 
 
   /**
@@ -59,7 +65,12 @@ var Goa = function (packageName, propertyStore, optTimeout , impersonate) {
         cUseful.applyDefault(timeout_, GoaApp.getServicePackage(package_).defaultDuration || 0)));
      
 
-    // if we have a token or can use a refresh to get one, our work is done
+    // if we have a token our work is done
+    if (self.hasToken() ) {
+      return self;
+    }
+    
+    // try to get one.
     GoaApp.start (package_, undefined, impersonate_, timeout_ );
     
     if (GoaApp.hasToken(package_)) {
@@ -83,19 +94,20 @@ var Goa = function (packageName, propertyStore, optTimeout , impersonate) {
     // need to store these for later
       id_ = cUseful.generateUniqueString();
       GoaApp.cachePut ( id_ , package_.packageName , params_, onToken_);
+      var offline = cUseful.applyDefault(package_.offline, true);
       
       needsConsent_ = consentScreen_ || GoaApp.defaultConsentScreen ( GoaApp.createAuthenticationUri ( 
         package_, {
           callback : callback_,
           timeout: timeout_,
-          offline:true,
+          offline:offline,
           force: true
         }, {
           goaid:id_,
           goaphase:'fetch',
           goaname:package_.packageName
-        }) ,GoaApp.createRedirectUri(), package_.packageName, package_.service);
-      
+        }) ,GoaApp.createRedirectUri(), package_.packageName, package_.service, offline);
+
       return self;
     }
     
@@ -203,10 +215,11 @@ var Goa = function (packageName, propertyStore, optTimeout , impersonate) {
   };
   /**
    * test for token
+   * @param {boolean} check whether to check against infra
    * @return {boolean} there is one or not
    */
-  self.hasToken = function () {
-    return GoaApp.hasToken (package_);
+  self.hasToken = function (check) {
+    return GoaApp.hasToken (package_,check);
   };
   
   /**
@@ -217,6 +230,14 @@ var Goa = function (packageName, propertyStore, optTimeout , impersonate) {
     return GoaApp.getToken (package_);
   };
   
+   /**
+   * get property
+   * @param {string} key the key
+   * @return {string | undefined} the property value
+   */
+  self.getProperty = function (key) {
+    return GoaApp.getProperty (package_ , key);
+  };
   /**
    * get package
    * @return {object | undefined} the package
@@ -233,6 +254,21 @@ var Goa = function (packageName, propertyStore, optTimeout , impersonate) {
     package_.revised = new Date().getTime();
     GoaApp.setPackage ( propertyStore_ , package_);
     return self;
+  };
+  
+  /**
+   * kill the package
+   */
+  self.kill = function () {
+    GoaApp.killPackage(package_);
+    return self.writePackage();
+  };
+  
+  /**
+   * remove the package
+   */
+  self.remove = function () {
+    return GoaApp.removePackage ( propertyStore_, package_.packageName  );
   };
   
   
