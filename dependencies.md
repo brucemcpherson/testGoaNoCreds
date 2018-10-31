@@ -1,5 +1,5 @@
 # Google Apps Script Project: testGoaNoCreds
-This repo (testGoaNoCreds) was automatically updated on 27 July 2016 10:35:48 BST by GasGit
+This repo (testGoaNoCreds) was automatically updated on 31 October 2018 11:40:33 GMT by GasGit
 
 For more information see the [desktop liberation site](http://ramblings.mcpher.com/Home/excelquirks/drivesdk/gettinggithubready "desktop liberation") or [contact me on G+](https://plus.google.com/+BruceMcpherson "Bruce McPherson - GDE")
 ## Details for Apps Script project testGoaNoCreds
@@ -21,16 +21,19 @@ shoeboxed| server_js
 asana| server_js
 github| server_js
 githubrecall| server_js
+appsscript| json
 ### Directly referenced libraries
 *library*|*identifier*|*key*|*version*|*dev mode*|*source*|
 --- | --- | --- | --- | --- | --- 
-cGoa| cGoa|MZx5DzNPsYjVyZaR67xXJQai_d-phDA33|3|no|[here](libraries/cGoa "library source")
+cGoa| cGoa|1v_l4xN3ICa0lAW315NQEzAHPSoNiFdWHsMEwj2qA5t9cgZ5VWci2Qxv2|3|no|[here](libraries/cGoa "library source")
 ### All dependencies and sub dependencies
 *library*|*identifier*|*key*|*version*|*dev mode*|*source*|
 --- | --- | --- | --- | --- | --- 
-cGoa| cGoa|MZx5DzNPsYjVyZaR67xXJQai_d-phDA33|3|no|[here](libraries/cGoa "library source")
-cUseful| cUseful|Mcbr-v4SsYKJP7JMohttAZyz3TLx7pV4j|30|no|[here](libraries/cUseful "library source")
+cGoa| cGoa|1v_l4xN3ICa0lAW315NQEzAHPSoNiFdWHsMEwj2qA5t9cgZ5VWci2Qxv2|3|no|[here](libraries/cGoa "library source")
+cUseful| cUseful|1EbLSESpiGkI3PYmJqWh3-rmLkYKAtCNPi1L2YCtMgo2Ut8xMThfJ41Ex|94|no|[here](libraries/cUseful "library source")
 ### Enabled Google Services
 no libraries discovered
-###Need more detail ?
+### Scopes required
+no scopes discovered
+### Need more detail ?
 You can see [full project info as json here](info.json)
